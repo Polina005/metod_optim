@@ -1,0 +1,156 @@
+
+#include <iostream>
+#include <vector>
+#include <cmath>
+#include <iomanip>
+using namespace std;
+
+using Vec = vector<double>;
+using Mat = vector<Vec>;
+
+double f(const Vec& x) {
+    return x[0]*x[0] + 5*x[1]*x[1] + x[0]*x[1] + x[0];
+}
+
+Vec grad(const Vec& x) {
+    return {2*x[0] + x[1] + 1, x[0] + 10*x[1]};
+}
+
+double dot(const Vec& a, const Vec& b) {
+    double s = 0;
+    for (int i = 0; i < a.size(); i++)
+        s += a[i]*b[i];
+    return s;
+}
+
+double norm(const Vec& a) {
+    return sqrt(dot(a, a));
+}
+
+Vec add(const Vec& a, const Vec& b, double k = 1) {
+    Vec r(a.size());
+    for (int i = 0; i < a.size(); i++)
+        r[i] = a[i] + k*b[i];
+    return r;
+}
+
+Vec mult(const Mat& A, const Vec& x) {
+    Vec r(x.size(), 0);
+    for (int i = 0; i < x.size(); i++)
+        for (int j = 0; j < x.size(); j++)
+            r[i] += A[i][j]*x[j];
+    return r;
+}
+
+Mat identity(int n) {
+    Mat A(n, Vec(n, 0));
+    for (int i = 0; i < n; i++)
+        A[i][i] = 1;
+    return A;
+}
+
+double goldenSection(const Vec& x, const Vec& d) {
+    double a = 0.0, b = 1.0;
+    const double q = (sqrt(5.0) - 1.0) / 2.0;
+
+    double c = b - q*(b-a);
+    double e = a + q*(b-a);
+
+    while (b-a > 1e-8) {
+        double fc = f(add(x, d, c));
+        double fe = f(add(x, d, e));
+
+        if (fc < fe) {
+            b = e;
+            e = c;
+            c = b - q*(b-a);
+        } else {
+            a = c;
+            c = e;
+            e = a + q*(b-a);
+        }
+    }
+
+    return (a+b)/2.0;
+}
+
+void DFP(Vec x, double eps1, double eps2, int maxIter) {
+    int n = x.size();
+    Mat A = identity(n);
+    Vec g = grad(x);
+    double fx = f(x);
+    int stable = 0;
+
+    cout << fixed << setprecision(6);
+
+    for (int k = 0; k < maxIter; k++) {
+        if (norm(g) <= eps1) break;
+
+        Vec d = mult(A, g);
+        for (double& v : d) v = -v;
+
+        if (dot(g, d) >= 0) {
+            A = identity(n);
+            d = g;
+            for (double& v : d) v = -v;
+        }
+
+        double alpha = goldenSection(x, d);
+        Vec xn = add(x, d, alpha);
+        double fn = f(xn);
+
+        Vec gn = grad(xn);
+        Vec s = add(xn, x, -1);
+        Vec y = add(gn, g, -1);
+
+        double sy = dot(s, y);
+        Vec Ay = mult(A, y);
+        double yAy = dot(y, Ay);
+
+        if (sy > 1e-12*norm(s)*norm(y) && yAy > 1e-14) {
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                    A[i][j] += s[i]*s[j]/sy - Ay[i]*Ay[j]/yAy;
+        } else {
+            A = identity(n);
+        }
+
+        double dx = norm(s);
+        double df = abs(fn-fx);
+
+        cout << "Итерация " << k+1 << endl;
+        cout << "x = ";
+        for (double v : xn) cout << v << " ";
+        cout << "\nf(x) = " << fn;
+        cout << "\nНорма градиента = " << norm(gn);
+        cout << "\nШаг = " << alpha << "\n\n";
+
+        if (dx < eps2 && df < eps2)
+            stable++;
+        else
+            stable = 0;
+
+        x = xn;
+        g = gn;
+        fx = fn;
+
+        if (stable >= 2 || norm(g) <= eps1) break;
+    }
+
+    cout << "Результат:" << endl;
+    cout << "x* = ";
+    for (double v : x) cout << v << " ";
+    cout << "\nf(x*) = " << fx << endl;
+    cout << "Норма градиента = " << norm(g) << endl;
+}
+
+int main() {
+    Vec x0 = {1.0, 1.0};
+
+    double eps1 = 0.1;
+    double eps2 = 0.0001;
+    int maxIter = 1000;
+
+    DFP(x0, eps1, eps2, maxIter);
+
+}
